@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W. Rexlin — CS & Business Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+:root {
+  --bg: #070707;
+  --surface: #0e0e0e;
+  --surface2: #161616;
+  --accent: #b5f03c;
+  --accent-dim: rgba(181,240,60,0.15);
+  --text: #f2f0ec;
+  --muted: #666;
+  --border: #1c1c1c;
+  --font-display: 'DM Serif Display', serif;
+  --font-sans: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: auto; }
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  cursor: none;
+  height: 100%;
+}
+
+/* ── CURSOR ── */
+#cursor-dot {
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  position: fixed; z-index: 9999;
+  pointer-events: none;
+  transform: translate(-50%,-50%);
+  transition: transform 0.1s, width 0.3s, height 0.3s, background 0.3s;
+  mix-blend-mode: difference;
+}
+#cursor-ring {
+  width: 40px; height: 40px;
+  border: 1px solid rgba(181,240,60,0.5);
+  border-radius: 50%;
+  position: fixed; z-index: 9998;
+  pointer-events: none;
+  transform: translate(-50%,-50%);
+  transition: width 0.4s, height 0.4s, border-color 0.3s;
+}
+body.hovering #cursor-dot { width: 14px; height: 14px; }
+body.hovering #cursor-ring { width: 60px; height: 60px; border-color: var(--accent); }
+
+/* ── MOUSE TRAIL ── */
+.trail-dot {
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  position: fixed; z-index: 9990;
+  pointer-events: none;
+  transform: translate(-50%,-50%);
+  opacity: 0.6;
+  transition: opacity 0.5s;
+}
+
+/* ── WEBGL CANVAS ── */
+#bg-canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ── CONTENT WRAPPER ── */
+.content {
+  position: relative;
+  z-index: 1;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── FULLPAGE SCROLL CONTAINER ── */
+#fp-container {
+  position: relative;
+  width: 100%;
+  will-change: transform;
+  transition: transform 0.95s cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* Each section panel */
+.fp-section {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+}
+
+/* The ticker and footer live outside the scroll system but we handle them */
+
+/* ── SECTION PROGRESS DOTS ── */
+#fp-nav {
+  position: fixed;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+}
+.fp-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+}
+.fp-dot::before {
+  content: attr(data-label);
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.fp-dot:hover::before,
+.fp-dot.active::before { opacity: 1; }
+.fp-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 12px rgba(181,240,60,0.6);
+  transform: scale(1.6);
+}
+.fp-dot:hover:not(.active) {
+  background: rgba(255,255,255,0.45);
+  transform: scale(1.3);
+}
+
+/* ── SECTION TRANSITION STATE ── */
+#fp-container.is-animating {
+  pointer-events: none;
+}
+
+/* ── SECTION INNER SCROLL (for long sections) ── */
+.fp-section .section-inner {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg);
+}
+.fp-section .section-inner::-webkit-scrollbar { width: 3px; }
+.fp-section .section-inner::-webkit-scrollbar-thumb { background: var(--accent); }
+
+/* ── SLIDE IN ANIMATION ── */
+@keyframes sectionEnterFromBottom {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sectionEnterFromTop {
+  from { opacity: 0; transform: translateY(-30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fp-section.entering-down .section-inner > * {
+  animation: sectionEnterFromBottom 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.4s;
+}
+.fp-section.entering-up .section-inner > * {
+  animation: sectionEnterFromTop 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: 0.4s;
+}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--accent); }
+
+/* ── NAV ── */
+nav {
+  position: fixed; top: 0; width: 100%; z-index: 100;
+  padding: 28px 56px;
+  display: flex; justify-content: space-between; align-items: center;
+  transition: padding 0.4s, background 0.4s;
+}
+nav.scrolled {
+  padding: 16px 56px;
+  background: rgba(7,7,7,0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-logo {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-logo span { color: var(--accent); }
+.nav-links { display: flex; gap: 40px; list-style: none; align-items: center; }
+.nav-links a {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color 0.2s;
+  position: relative;
+}
+.nav-links a::after {
+  content: '';
+  position: absolute; bottom: -4px; left: 0;
+  width: 0; height: 1px;
+  background: var(--accent);
+  transition: width 0.3s;
+}
+.nav-links a:hover { color: var(--text); }
+.nav-links a:hover::after { width: 100%; }
+
+/* ── HERO ── */
+.hero {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0 56px 80px;
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-bg-text {
+  position: absolute;
+  bottom: -60px; right: -40px;
+  font-family: var(--font-display);
+  font-size: 28vw;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(181,240,60,0.04);
+  pointer-events: none;
+  white-space: nowrap;
+  letter-spacing: -0.05em;
+  user-select: none;
+}
+
+.hero-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeUp 0.8s 0.2s forwards;
+}
+.hero-eyebrow-line { width: 40px; height: 1px; background: var(--accent); }
+.hero-eyebrow span {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(4.5rem, 11vw, 11rem);
+  line-height: 0.88;
+  letter-spacing: -0.04em;
+  margin-bottom: 48px;
+}
+.hero-title .line {
+  display: block;
+  overflow: hidden;
+}
+.hero-title .line-inner {
+  display: block;
+  opacity: 0;
+  transform: translateY(100%);
+  animation: slideUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-title .line:nth-child(1) .line-inner { animation-delay: 0.3s; }
+.hero-title .line:nth-child(2) .line-inner { animation-delay: 0.45s; color: var(--accent); font-style: italic; }
+.hero-title .line:nth-child(3) .line-inner { animation-delay: 0.6s; }
+
+.hero-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  opacity: 0;
+  animation: fadeUp 0.8s 0.9s forwards;
+}
+.hero-desc {
+  max-width: 400px;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: #999;
+}
+.hero-desc strong { color: var(--text); }
+
+.hero-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 16px; }
+
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 28px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  border-radius: 100px;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.btn-pill::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 0;
+  border-radius: 100px;
+}
+.btn-pill:hover::before { transform: scaleX(1); transform-origin: left; }
+.btn-pill:hover { color: #000; }
+.btn-pill span { position: relative; z-index: 1; }
+
+.btn-solid {
+  background: var(--accent);
+  color: #000;
+  font-weight: 600;
+}
+.btn-solid::before { background: #fff; }
+.btn-outline-pill {
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--muted);
+}
+.btn-outline-pill:hover { color: #000; border-color: var(--accent); }
+
+/* ── SCROLL INDICATOR ── */
+.scroll-indicator {
+  position: absolute;
+  left: 56px;
+  bottom: 80px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  opacity: 0;
+  animation: fadeUp 0.8s 1.2s forwards;
+}
+.scroll-line-wrap {
+  width: 1px;
+  height: 60px;
+  background: var(--border);
+  position: relative;
+  overflow: hidden;
+}
+.scroll-line-fill {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 40%;
+  background: var(--accent);
+  animation: scrollDrop 1.8s ease-in-out infinite;
+}
+@keyframes scrollDrop {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(300%); }
+}
+.scroll-label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* ── TICKER ── */
+.ticker {
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 16px 0;
+  overflow: hidden;
+  background: var(--surface);
+  position: relative;
+}
+.ticker-track {
+  display: flex;
+  gap: 64px;
+  animation: ticker 30s linear infinite;
+  white-space: nowrap;
+}
+.ticker-item {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #444;
+  display: flex;
+  align-items: center;
+  gap: 64px;
+  flex-shrink: 0;
+}
+.ticker-dot { color: var(--accent); font-size: 0.5rem; }
+@keyframes ticker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+/* ── SECTION BASE ── */
+.section {
+  padding: 80px 56px 60px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(50px);
+  transition: opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1), transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.reveal.visible { opacity: 1; transform: none; }
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-label::before { content: ''; display: block; width: 28px; height: 1px; background: var(--accent); }
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 5.5vw, 5.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+}
+.section-title em { font-style: italic; color: var(--accent); }
+
+/* ── ABOUT ── */
+.about { background: var(--surface); }
+.about-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 100px;
+  margin-top: 72px;
+}
+.about-text { font-size: 1.05rem; line-height: 1.8; color: #aaa; }
+.about-text p + p { margin-top: 20px; }
+.about-text strong { color: var(--text); font-weight: 600; }
+
+.about-meta { display: flex; flex-direction: column; }
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+  transition: padding-left 0.3s;
+}
+.meta-row:hover { padding-left: 8px; }
+.meta-k {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 2px;
+}
+.meta-v { font-size: 0.88rem; color: var(--text); text-align: right; max-width: 240px; line-height: 1.5; }
+
+/* ── SKILLS ── */
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin-top: 72px;
+}
+.skill-card {
+  background: var(--surface);
+  padding: 40px;
+  transition: background 0.3s, transform 0.3s;
+  position: relative;
+  overflow: hidden;
+}
+.skill-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.skill-card:hover { background: var(--surface2); transform: translateY(-4px); }
+.skill-card:hover::after { transform: scaleX(1); }
+
+.skill-name {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  margin-bottom: 12px;
+  letter-spacing: -0.01em;
+}
+.skill-desc { font-size: 0.84rem; line-height: 1.65; color: #777; margin-bottom: 20px; }
+.tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #555;
+  border: 1px solid #222;
+  padding: 5px 11px;
+  transition: border-color 0.2s, color 0.2s;
+}
+.skill-card:hover .tag { border-color: #333; color: #888; }
+
+/* ── EXPERIENCE ── */
+.experience { background: var(--surface); }
+.exp-list { margin-top: 72px; }
+.exp-item {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 60px;
+  padding: 52px 0;
+  border-bottom: 1px solid var(--border);
+  transition: padding-left 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+.exp-item:first-child { border-top: 1px solid var(--border); }
+.exp-item:hover { padding-left: 20px; }
+.exp-meta { padding-top: 6px; }
+.exp-date {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.exp-org { font-size: 0.82rem; color: #555; }
+.exp-badge {
+  display: inline-block;
+  background: var(--accent-dim);
+  border: 1px solid rgba(181,240,60,0.25);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 5px 14px;
+  margin-bottom: 14px;
+}
+.exp-title {
+  font-family: var(--font-display);
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin-bottom: 16px;
+}
+.exp-desc { font-size: 0.9rem; line-height: 1.72; color: #888; }
+
+/* ── PROJECTS ── */
+.projects-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  margin-top: 72px;
+}
+.proj-card {
+  background: var(--surface);
+  padding: 52px;
+  position: relative;
+  overflow: hidden;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: background 0.3s;
+}
+.proj-card::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 0;
+  background: linear-gradient(to top, rgba(181,240,60,0.04), transparent);
+  transition: height 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.proj-card:hover { background: var(--surface2); }
+.proj-card:hover::before { height: 100%; }
+
+.proj-arrow {
+  position: absolute;
+  top: 40px; right: 40px;
+  width: 36px; height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  color: var(--muted);
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.proj-card:hover .proj-arrow {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+  transform: rotate(45deg);
+}
+
+.proj-num {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.2em;
+  color: #444;
+  margin-bottom: 28px;
+}
+.proj-title {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin-bottom: 16px;
+}
+.proj-desc {
+  font-size: 0.86rem;
+  line-height: 1.68;
+  color: #777;
+  flex-grow: 1;
+  margin-bottom: 32px;
+}
+.proj-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.proj-date {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #444;
+}
+.proj-link {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  text-decoration: none;
+  position: relative;
+}
+.proj-link::after {
+  content: '';
+  position: absolute;
+  bottom: -2px; left: 0;
+  width: 100%; height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: right;
+  transition: transform 0.3s;
+}
+.proj-link:hover::after { transform: scaleX(1); transform-origin: left; }
+
+.proj-card.wide {
+  grid-column: span 2;
+  flex-direction: row;
+  gap: 80px;
+  align-items: center;
+  min-height: 220px;
+}
+.proj-card.wide .proj-body { flex: 1; }
+
+/* ── CONTACT ── */
+.contact { background: var(--surface); }
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 100px;
+  margin-top: 72px;
+  align-items: start;
+}
+.contact-tagline {
+  font-size: 1.1rem;
+  line-height: 1.75;
+  color: #888;
+  margin-top: 28px;
+  margin-bottom: 56px;
+  max-width: 380px;
+}
+.contact-links { display: flex; flex-direction: column; }
+.clink {
+  display: flex;
+  align-items: center;
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  transition: padding-left 0.35s cubic-bezier(0.16,1,0.3,1);
+}
+.clink:first-child { border-top: 1px solid var(--border); }
+.clink:hover { padding-left: 16px; }
+.clink:hover .clink-platform { color: var(--accent); }
+.clink:hover .clink-arrow { color: var(--accent); transform: translate(4px,-4px); }
+.clink-platform {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #444;
+  width: 90px;
+  transition: color 0.2s;
+}
+.clink-label {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
+  flex: 1;
+}
+.clink-arrow {
+  font-size: 1.1rem;
+  color: #444;
+  transition: all 0.3s;
+}
+
+.info-cards { display: flex; flex-direction: column; gap: 20px; }
+.info-card {
+  background: var(--surface2);
+  padding: 28px 32px;
+  border-left: 2px solid var(--accent);
+  transition: transform 0.3s;
+}
+.info-card:hover { transform: translateX(6px); }
+.info-card-k {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.info-card-v { font-size: 0.9rem; color: var(--text); line-height: 1.6; }
+
+/* ── FOOTER ── */
+footer {
+  padding: 32px 56px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.footer-left { font-family: var(--font-display); font-size: 1.1rem; }
+.footer-center {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+}
+.footer-right {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* responsive moved to bottom */
+
+/* ── HERO SECTION INNER FIX ── */
+#home .section-inner {
+  height: 100vh;
+  overflow: hidden;
+}
+#home .hero {
+  height: 100vh;
+}
+
+/* ── RESPONSIVE ADJUSTMENTS ── */
+@media (max-width: 900px) {
+  nav { padding: 20px 24px; }
+  nav.scrolled { padding: 14px 24px; }
+  .nav-links { display: none; }
+  .hero { padding: 0 24px 60px; }
+  .section { padding: 60px 24px 40px; }
+  .about-layout { grid-template-columns: 1fr; gap: 48px; }
+  .skills-grid { grid-template-columns: 1fr; }
+  .exp-item { grid-template-columns: 1fr; gap: 12px; }
+  .projects-grid { grid-template-columns: 1fr; }
+  .proj-card.wide { grid-column: span 1; flex-direction: column; }
+  .contact-grid { grid-template-columns: 1fr; gap: 48px; }
+  footer { flex-direction: column; gap: 12px; text-align: center; }
+  .scroll-indicator { display: none; }
+  .hero-bottom { flex-direction: column; align-items: flex-start; gap: 32px; }
+  .hero-actions { align-items: flex-start; }
+  #fp-nav { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- WebGL Canvas -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- Cursor -->
+<div id="cursor-dot"></div>
+<div id="cursor-ring"></div>
+
+<div class="content">
+
+<!-- ── SECTION NAVIGATION DOTS ── -->
+<div id="fp-nav">
+  <div class="fp-dot active" data-index="0" data-label="Home"></div>
+  <div class="fp-dot" data-index="1" data-label="About"></div>
+  <div class="fp-dot" data-index="2" data-label="Skills"></div>
+  <div class="fp-dot" data-index="3" data-label="Experience"></div>
+  <div class="fp-dot" data-index="4" data-label="Projects"></div>
+  <div class="fp-dot" data-index="5" data-label="Contact"></div>
+</div>
+
+<!-- ── NAV ── -->
+<nav id="nav">
+  <a href="#" class="nav-logo">W.<span>Rexlin</span></a>
+  <ul class="nav-links">
+    <li><a href="#" data-goto="1">About</a></li>
+    <li><a href="#" data-goto="2">Skills</a></li>
+    <li><a href="#" data-goto="3">Experience</a></li>
+    <li><a href="#" data-goto="4">Projects</a></li>
+    <li><a href="#" data-goto="5">Contact</a></li>
+  </ul>
+</nav>
+
+<!-- ── FULLPAGE SCROLL CONTAINER ── -->
+<div id="fp-container">
+
+<!-- ════ SECTION 0: HERO ════ -->
+<div class="fp-section" id="home">
+<div class="section-inner">
+<div class="hero">
+  <div class="hero-bg-text">RX</div>
+  <div class="scroll-indicator">
+    <div class="scroll-line-wrap"><div class="scroll-line-fill"></div></div>
+    <span class="scroll-label">Scroll</span>
+  </div>
+  <div class="hero-eyebrow">
+    <div class="hero-eyebrow-line"></div>
+    <span>Undergraduate Research Aspirant · VIT Chennai</span>
+  </div>
+  <h1 class="hero-title">
+    <span class="line"><span class="line-inner">W.</span></span>
+    <span class="line"><span class="line-inner">Rexlin</span></span>
+    <span class="line"><span class="line-inner">—</span></span>
+  </h1>
+  <div class="hero-bottom">
+    <p class="hero-desc">
+      CS &amp; Business Analytics student at VIT Chennai.
+      Building intelligent systems at the intersection of ML, Deep Learning &amp; Data Science.
+      Currently interning at <strong>DRDO DYSL-CT</strong>.
+    </p>
+    <div class="hero-actions">
+      <a href="#" class="btn-pill btn-solid" data-goto="4"><span>View Projects</span><span>↓</span></a>
+      <a href="#" class="btn-pill btn-outline-pill" data-goto="5"><span>Get In Touch</span></a>
+    </div>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- ════ SECTION 1: ABOUT ════ -->
+<div class="fp-section" id="about">
+<div class="section-inner">
+<div class="ticker">
+  <div class="ticker-track">
+    <div class="ticker-item">Python<span class="ticker-dot">◆</span>Machine Learning<span class="ticker-dot">◆</span>Deep Learning<span class="ticker-dot">◆</span>Computer Vision<span class="ticker-dot">◆</span>IoT Systems<span class="ticker-dot">◆</span>DevOps<span class="ticker-dot">◆</span>Business Intelligence<span class="ticker-dot">◆</span>TensorFlow<span class="ticker-dot">◆</span>PyTorch<span class="ticker-dot">◆</span>DRDO Intern<span class="ticker-dot">◆</span>VIT Chennai<span class="ticker-dot">◆</span>Data Analytics<span class="ticker-dot">◆</span></div>
+    <div class="ticker-item">Python<span class="ticker-dot">◆</span>Machine Learning<span class="ticker-dot">◆</span>Deep Learning<span class="ticker-dot">◆</span>Computer Vision<span class="ticker-dot">◆</span>IoT Systems<span class="ticker-dot">◆</span>DevOps<span class="ticker-dot">◆</span>Business Intelligence<span class="ticker-dot">◆</span>TensorFlow<span class="ticker-dot">◆</span>PyTorch<span class="ticker-dot">◆</span>DRDO Intern<span class="ticker-dot">◆</span>VIT Chennai<span class="ticker-dot">◆</span>Data Analytics<span class="ticker-dot">◆</span></div>
+  </div>
+</div>
+<section class="about section">
+  <div class="reveal"><p class="section-label">01 — About</p></div>
+  <div class="reveal reveal-delay-1">
+    <h2 class="section-title">Building the <em>future</em><br>from first principles</h2>
+  </div>
+  <div class="about-layout">
+    <div class="about-text reveal reveal-delay-2">
+      <p>I'm <strong>W. Rexlin</strong>, a second-year Integrated M.Tech student in Computer Science Engineering
+        with a specialization in Business Analytics at VIT Chennai. I'm deeply interested in
+        intelligent systems — where data meets decision-making.</p>
+      <p>Currently doing a summer internship at <strong>DRDO Young Scientist Laboratory (DYSL-CT)</strong>,
+        working at the frontier of applied research and defence technology.</p>
+      <p>My work spans deep learning for medical imaging, financial interpretability models,
+        chaos-aware DevOps systems, and IoT-integrated smart systems. I'm driven by the belief
+        that rigorous engineering and bold ideas can solve real-world problems.</p>
+    </div>
+    <div class="about-meta reveal reveal-delay-3">
+      <div class="meta-row"><span class="meta-k">Location</span><span class="meta-v">Chennai, India</span></div>
+      <div class="meta-row"><span class="meta-k">Institution</span><span class="meta-v">VIT Chennai</span></div>
+      <div class="meta-row"><span class="meta-k">Degree</span><span class="meta-v">Integrated M.Tech CSE<br>Business Analytics</span></div>
+      <div class="meta-row"><span class="meta-k">Duration</span><span class="meta-v">2023 – 2028</span></div>
+      <div class="meta-row"><span class="meta-k">Current Role</span><span class="meta-v">Summer Intern @ DRDO DYSL-CT</span></div>
+      <div class="meta-row"><span class="meta-k">Email</span><span class="meta-v">rexlin.w2023@vitstudent.ac.in</span></div>
+    </div>
+  </div>
+</section>
+</div>
+</div>
+
+<!-- ════ SECTION 2: SKILLS ════ -->
+<div class="fp-section" id="skills">
+<div class="section-inner">
+<section class="section">
+  <div class="reveal"><p class="section-label">02 — Skills</p></div>
+  <div class="reveal reveal-delay-1"><h2 class="section-title">Technical <em>Arsenal</em></h2></div>
+  <div class="skills-grid">
+    <div class="skill-card reveal reveal-delay-1">
+      <div class="skill-name">ML &amp; AI</div>
+      <p class="skill-desc">Neural networks, model evaluation, feature engineering, and end-to-end ML pipelines.</p>
+      <div class="tags"><span class="tag">Scikit-learn</span><span class="tag">TensorFlow</span><span class="tag">PyTorch</span><span class="tag">CNNs</span><span class="tag">YOLO</span></div>
+    </div>
+    <div class="skill-card reveal reveal-delay-2">
+      <div class="skill-name">Computer Vision</div>
+      <p class="skill-desc">Image classification, object detection, and facial analysis with deep learning.</p>
+      <div class="tags"><span class="tag">OpenCV</span><span class="tag">Object Detection</span><span class="tag">Classification</span></div>
+    </div>
+    <div class="skill-card reveal reveal-delay-3">
+      <div class="skill-name">Data Science</div>
+      <p class="skill-desc">EDA to compelling dashboards — making data speak clearly and confidently.</p>
+      <div class="tags"><span class="tag">Pandas</span><span class="tag">NumPy</span><span class="tag">Tableau</span><span class="tag">Spark</span></div>
+    </div>
+    <div class="skill-card reveal reveal-delay-1">
+      <div class="skill-name">IoT &amp; Systems</div>
+      <p class="skill-desc">Sensor integration, real-time pipelines, and embedded systems with Arduino.</p>
+      <div class="tags"><span class="tag">Arduino</span><span class="tag">Sensors</span><span class="tag">Data Pipelines</span></div>
+    </div>
+    <div class="skill-card reveal reveal-delay-2">
+      <div class="skill-name">DevOps &amp; Tools</div>
+      <p class="skill-desc">CI/CD pipelines, containerization, version control, and cloud-ready deployment.</p>
+      <div class="tags"><span class="tag">Docker</span><span class="tag">Git</span><span class="tag">Jenkins</span><span class="tag">MongoDB</span></div>
+    </div>
+    <div class="skill-card reveal reveal-delay-3">
+      <div class="skill-name">Programming</div>
+      <p class="skill-desc">Multi-paradigm proficiency from scripting to systems to web development.</p>
+      <div class="tags"><span class="tag">Python</span><span class="tag">Java</span><span class="tag">SQL</span><span class="tag">C</span><span class="tag">JavaScript</span></div>
+    </div>
+  </div>
+</section>
+</div>
+</div>
+
+<!-- ════ SECTION 3: EXPERIENCE ════ -->
+<div class="fp-section" id="experience">
+<div class="section-inner">
+<section class="experience section">
+  <div class="reveal"><p class="section-label">03 — Experience</p></div>
+  <div class="reveal reveal-delay-1"><h2 class="section-title">Where I've <em>contributed</em></h2></div>
+  <div class="exp-list">
+    <div class="exp-item reveal">
+      <div class="exp-meta">
+        <div class="exp-date">2025 — Present</div>
+        <div class="exp-org">DRDO DYSL-CT</div>
+      </div>
+      <div>
+        <div class="exp-badge">Summer Internship</div>
+        <div class="exp-title">Young Scientist Laboratory — Cognitive Technologies</div>
+        <p class="exp-desc">Working at DRDO's Young Scientist Laboratory focused on Cognitive Technologies, contributing to applied research at the intersection of AI and defence systems.</p>
+      </div>
+    </div>
+    <div class="exp-item reveal">
+      <div class="exp-meta">
+        <div class="exp-date">Apr – Aug 2024</div>
+        <div class="exp-org">VIT Chennai</div>
+      </div>
+      <div>
+        <div class="exp-badge">Leadership Role</div>
+        <div class="exp-title">Social Media &amp; Content Lead — ACM VIT Chennai</div>
+        <p class="exp-desc">Led content strategy and social media presence for ACM VIT Chennai. Grew online engagement and established consistent technical communication channels.</p>
+      </div>
+    </div>
+    <div class="exp-item reveal">
+      <div class="exp-meta">
+        <div class="exp-date">Sep 2024</div>
+        <div class="exp-org">VIT Chennai</div>
+      </div>
+      <div>
+        <div class="exp-badge">Event Committee</div>
+        <div class="exp-title">Registration Committee — TechnoVIT Annual Fest</div>
+        <p class="exp-desc">Coordinated participant registration and logistics for TechnoVIT, VIT Chennai's flagship annual technical festival.</p>
+      </div>
+    </div>
+    <div class="exp-item reveal">
+      <div class="exp-meta">
+        <div class="exp-date">Jun 2024</div>
+        <div class="exp-org">VIT Chennai</div>
+      </div>
+      <div>
+        <div class="exp-badge">Technical Role</div>
+        <div class="exp-title">Frontend Web Developer — Bionary Club</div>
+        <p class="exp-desc">Developed and maintained frontend web interfaces for the Bionary Club, building interactive and responsive web experiences.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</div>
+</div>
+
+<!-- ════ SECTION 4: PROJECTS ════ -->
+<div class="fp-section" id="projects">
+<div class="section-inner">
+<section class="section">
+  <div class="reveal"><p class="section-label">04 — Projects</p></div>
+  <div class="reveal reveal-delay-1"><h2 class="section-title">Research &amp; <em>Academic Work</em></h2></div>
+  <div class="projects-grid">
+    <div class="proj-card wide reveal">
+      <div class="proj-body">
+        <div class="proj-num">01 — Featured</div>
+        <div class="proj-title">Chaos-Aware DevOps System for Reliability Degradation Detection</div>
+        <p class="proj-desc">Designed a chaos-aware DevOps framework to quantify hidden reliability degradation and enable autonomous system recovery. Integrates chaos engineering with real-time observability.</p>
+        <div class="proj-footer">
+          <span class="proj-date">Jan 2026</span>
+          <a href="https://github.com/rexlinw" target="_blank" class="proj-link">View on GitHub</a>
+        </div>
+      </div>
+      <div class="proj-arrow">↗</div>
+    </div>
+    <div class="proj-card reveal">
+      <div class="proj-arrow">↗</div>
+      <div class="proj-num">02</div>
+      <div class="proj-title">Financial Concept Bottleneck Models for Interpretable Decision-Making</div>
+      <p class="proj-desc">Interpretable financial prediction models using concept bottleneck architectures for transparent managerial decision-making.</p>
+      <div class="proj-footer"><span class="proj-date">Jan 2026</span><a href="https://github.com/rexlinw" target="_blank" class="proj-link">GitHub</a></div>
+    </div>
+    <div class="proj-card reveal reveal-delay-1">
+      <div class="proj-arrow">↗</div>
+      <div class="proj-num">03</div>
+      <div class="proj-title">Detection of Spina Bifida in Newborns</div>
+      <p class="proj-desc">Deep learning–based medical imaging model for early detection of spina bifida in newborns, combining CNNs with domain-specific preprocessing.</p>
+      <div class="proj-footer"><span class="proj-date">Dec 2025</span><a href="https://github.com/rexlinw" target="_blank" class="proj-link">GitHub</a></div>
+    </div>
+    <div class="proj-card reveal">
+      <div class="proj-arrow">↗</div>
+      <div class="proj-num">04</div>
+      <div class="proj-title">Deepfake Detection Model on Human Faces</div>
+      <p class="proj-desc">Deep learning model identifying facial deepfakes by learning discriminative visual features. Addresses the growing threat of synthetic media manipulation.</p>
+      <div class="proj-footer"><span class="proj-date">Oct 2025</span><a href="https://github.com/rexlinw" target="_blank" class="proj-link">GitHub</a></div>
+    </div>
+    <div class="proj-card reveal reveal-delay-1">
+      <div class="proj-arrow">↗</div>
+      <div class="proj-num">05</div>
+      <div class="proj-title">Smart Health-Aware Food Delivery &amp; Recommendation System</div>
+      <p class="proj-desc">ML-based personalized food recommendation system integrating health conditions for intelligent dietary decision support.</p>
+      <div class="proj-footer"><span class="proj-date">Sep 2025</span><a href="https://github.com/rexlinw" target="_blank" class="proj-link">GitHub</a></div>
+    </div>
+    <div class="proj-card reveal reveal-delay-2">
+      <div class="proj-arrow">↗</div>
+      <div class="proj-num">06</div>
+      <div class="proj-title">Delaying Leaf Senescence Using IoT</div>
+      <p class="proj-desc">IoT-driven monitoring and intervention system to delay leaf senescence through continuous environmental data analysis.</p>
+      <div class="proj-footer"><span class="proj-date">Feb 2025</span><a href="https://github.com/rexlinw" target="_blank" class="proj-link">GitHub</a></div>
+    </div>
+  </div>
+</section>
+</div>
+</div>
+
+<!-- ════ SECTION 5: CONTACT ════ -->
+<div class="fp-section" id="contact">
+<div class="section-inner">
+<section class="contact section">
+  <div class="reveal"><p class="section-label">05 — Contact</p></div>
+  <div class="reveal reveal-delay-1"><h2 class="section-title">Let's <em>connect</em></h2></div>
+  <div class="contact-grid">
+    <div>
+      <p class="contact-tagline reveal">Open to research collaborations, internship opportunities, and interesting conversations about AI, data, and technology.</p>
+      <div class="contact-links reveal reveal-delay-1">
+        <a href="https://www.linkedin.com/in/w-rexlin-279a3824b/" target="_blank" class="clink">
+          <span class="clink-platform">LinkedIn</span>
+          <span class="clink-label">W. Rexlin</span>
+          <span class="clink-arrow">↗</span>
+        </a>
+        <a href="https://github.com/rexlinw" target="_blank" class="clink">
+          <span class="clink-platform">GitHub</span>
+          <span class="clink-label">rexlinw</span>
+          <span class="clink-arrow">↗</span>
+        </a>
+        <a href="mailto:rexlin.w2023@vitstudent.ac.in" class="clink">
+          <span class="clink-platform">Email</span>
+          <span class="clink-label">rexlin.w2023@vitstudent.ac.in</span>
+          <span class="clink-arrow">↗</span>
+        </a>
+        <a href="tel:+918610355315" class="clink">
+          <span class="clink-platform">Phone</span>
+          <span class="clink-label">+91-8610355315</span>
+          <span class="clink-arrow">↗</span>
+        </a>
+      </div>
+    </div>
+    <div class="info-cards reveal reveal-delay-2">
+      <div class="info-card"><div class="info-card-k">Current Status</div><div class="info-card-v">Summer Intern @ DRDO DYSL-CT</div></div>
+      <div class="info-card"><div class="info-card-k">Education</div><div class="info-card-v">Integrated M.Tech CSE · Business Analytics<br>VIT Chennai · 2023–2028</div></div>
+      <div class="info-card"><div class="info-card-k">Research Interests</div><div class="info-card-v">Deep Learning · Medical Imaging<br>Interpretable AI · IoT · DevOps Intelligence</div></div>
+      <div class="info-card"><div class="info-card-k">Location</div><div class="info-card-v">Chennai, Tamil Nadu, India</div></div>
+    </div>
+  </div>
+</section>
+<footer>
+  <span class="footer-left">W. Rexlin</span>
+  <span class="footer-center">© 2025 · All rights reserved</span>
+  <span class="footer-right">VIT Chennai · DRDO DYSL-CT</span>
+</footer>
+</div>
+</div>
+
+</div><!-- end #fp-container -->
+</div><!-- end .content -->
+
+<script>
+/* ════ THREE.JS PARTICLE FIELD ════ */
+(function() {
+  const canvas = document.getElementById('bg-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+  camera.position.z = 3;
+
+  // Particles
+  const count = 2200;
+  const positions = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const phases = new Float32Array(count);
+
+  for (let i = 0; i < count; i++) {
+    positions[i * 3 + 0] = (Math.random() - 0.5) * 14;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
+    sizes[i] = Math.random() * 2.5 + 0.5;
+    phases[i] = Math.random() * Math.PI * 2;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  const mat = new THREE.PointsMaterial({
+    color: 0xb5f03c,
+    size: 0.018,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.35,
+  });
+
+  const particles = new THREE.Points(geo, mat);
+  scene.add(particles);
+
+  // Mouse influence
+  let mx = 0, my = 0;
+  window.addEventListener('mousemove', e => {
+    mx = (e.clientX / window.innerWidth - 0.5) * 2;
+    my = -(e.clientY / window.innerHeight - 0.5) * 2;
+  });
+
+  // Section influence (replaces scrollY for fullpage)
+  let fpSection = 0;
+  window.addEventListener('fp-change', e => { fpSection = e.detail || 0; });
+
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const t = clock.getElapsedTime();
+
+    const pos = geo.attributes.position.array;
+    for (let i = 0; i < count; i++) {
+      const phi = phases[i];
+      pos[i * 3 + 1] += Math.sin(t * 0.3 + phi) * 0.0004;
+      pos[i * 3 + 0] += Math.cos(t * 0.2 + phi * 1.3) * 0.0003;
+      // Wrap
+      if (pos[i * 3 + 1] > 5) pos[i * 3 + 1] = -5;
+      if (pos[i * 3 + 0] > 7) pos[i * 3 + 0] = -7;
+    }
+    geo.attributes.position.needsUpdate = true;
+
+    particles.rotation.y = t * 0.018 + mx * 0.08;
+    particles.rotation.x = t * 0.008 + my * 0.05;
+    camera.position.y = fpSection * -0.4;
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+
+/* ════ CURSOR ════ */
+const dot = document.getElementById('cursor-dot');
+const ring = document.getElementById('cursor-ring');
+let cx = 0, cy = 0, rx = 0, ry = 0;
+
+document.addEventListener('mousemove', e => { cx = e.clientX; cy = e.clientY; });
+
+(function cursorLoop() {
+  dot.style.left = cx + 'px';
+  dot.style.top = cy + 'px';
+  rx += (cx - rx) * 0.1;
+  ry += (cy - ry) * 0.1;
+  ring.style.left = rx + 'px';
+  ring.style.top = ry + 'px';
+  requestAnimationFrame(cursorLoop);
+})();
+
+document.querySelectorAll('a, button, .proj-card, .skill-card, .exp-item').forEach(el => {
+  el.addEventListener('mouseenter', () => document.body.classList.add('hovering'));
+  el.addEventListener('mouseleave', () => document.body.classList.remove('hovering'));
+});
+
+/* ════ MOUSE TRAIL ════ */
+const trailDots = [];
+const TRAIL_COUNT = 18;
+for (let i = 0; i < TRAIL_COUNT; i++) {
+  const d = document.createElement('div');
+  d.className = 'trail-dot';
+  d.style.opacity = (1 - i / TRAIL_COUNT) * 0.35 + '';
+  d.style.width = d.style.height = (4 - i * 0.15) + 'px';
+  document.body.appendChild(d);
+  trailDots.push({ el: d, x: 0, y: 0 });
+}
+function animateTrail() {
+  let px = cx, py = cy;
+  for (let i = 0; i < trailDots.length; i++) {
+    const td = trailDots[i];
+    td.x += (px - td.x) * (0.35 - i * 0.014);
+    td.y += (py - td.y) * (0.35 - i * 0.014);
+    td.el.style.left = td.x + 'px';
+    td.el.style.top = td.y + 'px';
+    px = td.x; py = td.y;
+  }
+  requestAnimationFrame(animateTrail);
+}
+animateTrail();
+
+/* ════ NAV ════ */
+document.getElementById('nav').classList.add('scrolled'); // always show nav bg in fullpage
+
+/* ════ FULLPAGE SCROLL ENGINE ════ */
+(function() {
+  const container = document.getElementById('fp-container');
+  const sections = Array.from(document.querySelectorAll('.fp-section'));
+  const dots = Array.from(document.querySelectorAll('.fp-dot'));
+  const TOTAL = sections.length;
+  let current = 0;
+  let isAnimating = false;
+  const DURATION = 950; // ms - matches CSS transition
+
+  function goTo(index, direction) {
+    if (index < 0 || index >= TOTAL || index === current || isAnimating) return;
+    isAnimating = true;
+    container.classList.add('is-animating');
+
+    const dir = index > current ? 'down' : 'up';
+    const prevSection = sections[current];
+    const nextSection = sections[index];
+
+    // Reset inner scroll position of incoming section
+    const innerScroll = nextSection.querySelector('.section-inner');
+    if (innerScroll) innerScroll.scrollTop = 0;
+
+    // Re-trigger reveals in new section
+    nextSection.querySelectorAll('.reveal').forEach(el => {
+      el.classList.remove('visible');
+    });
+
+    // Update dots
+    dots.forEach((d, i) => d.classList.toggle('active', i === index));
+
+    // Translate the container
+    container.style.transform = `translateY(-${index * 100}vh)`;
+
+    current = index;
+
+    // After transition, trigger reveals and cleanup
+    setTimeout(() => {
+      isAnimating = false;
+      container.classList.remove('is-animating');
+
+      // Trigger reveal animations for elements in new section
+      const revealEls = nextSection.querySelectorAll('.reveal');
+      revealEls.forEach((el, i) => {
+        setTimeout(() => el.classList.add('visible'), i * 60);
+      });
+
+      // Update URL hash silently
+      const sectionId = nextSection.id;
+      if (sectionId) history.replaceState(null, '', '#' + sectionId);
+    }, DURATION);
+  }
+
+  // Init: show first section reveals
+  setTimeout(() => {
+    sections[0].querySelectorAll('.reveal').forEach((el, i) => {
+      setTimeout(() => el.classList.add('visible'), i * 80);
+    });
+  }, 800);
+
+  // ── Wheel handler with inner scroll awareness ──
+  let wheelAccum = 0;
+  let wheelTimer = null;
+
+  window.addEventListener('wheel', (e) => {
+    e.preventDefault();
+
+    // Check if the active section has scrollable content
+    const activeInner = sections[current].querySelector('.section-inner');
+    if (activeInner) {
+      const atTop = activeInner.scrollTop <= 0;
+      const atBottom = activeInner.scrollTop + activeInner.clientHeight >= activeInner.scrollHeight - 4;
+
+      if (!atTop || !atBottom) {
+        // If can scroll within section, allow it
+        if (e.deltaY > 0 && !atBottom) {
+          activeInner.scrollTop += e.deltaY;
+          return;
+        }
+        if (e.deltaY < 0 && !atTop) {
+          activeInner.scrollTop += e.deltaY;
+          return;
+        }
+      }
+    }
+
+    // Accumulate wheel delta for trackpad sensitivity
+    wheelAccum += e.deltaY;
+    clearTimeout(wheelTimer);
+    wheelTimer = setTimeout(() => { wheelAccum = 0; }, 200);
+
+    if (Math.abs(wheelAccum) > 60) {
+      if (wheelAccum > 0) goTo(current + 1);
+      else goTo(current - 1);
+      wheelAccum = 0;
+    }
+  }, { passive: false });
+
+  // ── Keyboard navigation ──
+  window.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); goTo(current + 1); }
+    if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); goTo(current - 1); }
+  });
+
+  // ── Touch navigation ──
+  let touchStartY = 0;
+  window.addEventListener('touchstart', e => {
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  window.addEventListener('touchend', e => {
+    const delta = touchStartY - e.changedTouches[0].clientY;
+    if (Math.abs(delta) > 50) {
+      if (delta > 0) goTo(current + 1);
+      else goTo(current - 1);
+    }
+  }, { passive: true });
+
+  // ── Dot clicks ──
+  dots.forEach(dot => {
+    dot.addEventListener('click', () => {
+      const idx = parseInt(dot.dataset.index);
+      goTo(idx);
+    });
+  });
+
+  // ── Nav link clicks ──
+  document.querySelectorAll('[data-goto]').forEach(el => {
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      const idx = parseInt(el.dataset.goto);
+      goTo(idx);
+    });
+  });
+
+  // ── Expose goTo globally ──
+  window.fpGoTo = goTo;
+})();
+
+/* ════ SCROLL REVEAL (legacy - handled by fullpage engine now) ════ */
+// Intersection observer as fallback for any missed elements
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) e.target.classList.add('visible');
+  });
+}, { threshold: 0.05, rootMargin: '0px 0px -20px 0px' });
+// Only observe in current section's inner scroll
+document.querySelectorAll('.fp-section:first-child .reveal').forEach(el => observer.observe(el));
+
+/* ════ HERO PARALLAX (adapted for fullpage) ════ */
+// Parallax via container transform tracking
+</script>
+</body>
+</html>
